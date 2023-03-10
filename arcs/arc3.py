@@ -194,12 +194,6 @@ def create_metadata(name:str,
             metadata_dict[key] = args[key]
     return json.dumps(metadata_dict, indent=4)
 
-    # If the JSON Metadata file specifies extra metadata e (property extra_metadata), then am is defined as:
-    # am = SHA-512/256("arc0003/am" || SHA-512/256("arc0003/amj" || content of JSON Metadata file) || e)
-    # where || denotes concatenation and SHA-512/256 is defined in NIST FIPS 180-4. The above definition of am MUST be used when the property extra_metadata is specified, even if its value e is the empty string. Python code to compute the hash and a full example are provided below (see "Sample with Extra Metadata").
-    # Extra metadata can be used to store data about the asset that needs to be accessed from a smart contract. The smart contract would not be able to directly read the metadata. But, if provided with the hash of the JSON Metadata file and with the extra metadata e, the smart contract can check that e is indeed valid.
-    # If the JSON Metadata file does not specify the property extra_metadata, then am is defined as the SHA-256 digest of the JSON Metadata file as a 32-byte string (as defined in NIST FIPS 180-4)
-
 def create_asset_txn(
         dict_metadata:dict,
         str_metadata:str,

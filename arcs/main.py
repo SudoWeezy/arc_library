@@ -116,7 +116,7 @@ def demo():
         unsigned_txns.append(arc3.create_asset_txn(
             dict_metadata=dict_metadata,
             str_metadata=str_metadata,
-            unit_name=unitname_prefix + str(idx).zfill(4*(idx)), # zfill to get ALGO0001 ALGO0002 ... ALGO9999
+            unit_name=unitname_prefix + str(idx).zfill(4), # zfill to get ALGO0001 ALGO0002 ... ALGO9999
             asset_name=nft_metadata["name"],
             url="ipfs://" + url_prefix_json + "/" + json_file + '#arc3',
             sender=sender,
