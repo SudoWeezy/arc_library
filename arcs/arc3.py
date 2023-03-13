@@ -1,4 +1,3 @@
-from algosdk.v2client import algod
 import hashlib
 import pathlib
 import mimetypes
@@ -6,7 +5,6 @@ import json
 import base64
 from algosdk import transaction
 import arc16
-import sys
 def file_integrity(filename: str) ->str:
     with open(filename,"rb") as f:
         bytes = f.read() # read entire file as bytes
@@ -195,8 +193,7 @@ def create_metadata(name:str,
     return json.dumps(metadata_dict, indent=4)
 
 def create_asset_txn(
-        dict_metadata:dict,
-        str_metadata:str,
+        json_metadata:str,
         sender:str,
         sp:object,
         unit_name:str,
@@ -214,24 +211,24 @@ def create_asset_txn(
         rekey_to=""
         ):
 
-    metadata = dict(dict_metadata)
+    metadata = json.loads(json_metadata)
 
     
     if ("extra_metadata" in metadata.keys()):
         h = hashlib.new("sha512_256")
         h.update(b"arc0003/amj")
-        h.update(str_metadata.encode("utf-8"))
+        h.update(json_metadata.encode("utf-8"))
         json_metadata_hash = h.digest()
 
         h = hashlib.new("sha512_256")
         h.update(b"arc0003/am")
         
         h.update(json_metadata_hash)
-        h.update(base64.b64decode(dict_metadata["extra_metadata"]))
+        h.update(base64.b64decode(metadata["extra_metadata"]))
         am = h.digest()
     else:
         h = hashlib.new("sha256")
-        h.update(str_metadata.encode("utf-8"))
+        h.update(json_metadata.encode("utf-8"))
         am = h.digest()
     
     assert(url[:4]=="#arc3", '''

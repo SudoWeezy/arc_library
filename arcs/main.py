@@ -1,11 +1,11 @@
 from algosdk.v2client import algod
 from pyteal import compileTeal, Mode
 from beaker import sandbox
-import arc3, arc19, arc16
+import arc3, arc19
 import subprocess
 import json
 import pathlib
-def ipfs_folder_cid(folder: str, upload = False) -> str:
+def ipfs_cid_from_folder(folder: str, upload = False) -> str:
     """
     Compute the (encoded) information byte string corresponding to all the files inside the folder `folder`
     """
@@ -26,12 +26,100 @@ def ipfs_folder_cid(folder: str, upload = False) -> str:
     return text_cid
 
 
-def demo():
+def upload_ipfs_arc3(folder_image: str, nfts_metadata: dict) -> str:
+    cid_folder_images = ipfs_cid_from_folder(folder_image, upload=True)
+    print("Cid_Image_Folder: " + cid_folder_images)
+
+    url_prefix_images = "ipfs://" + cid_folder_images
+    # Check everything is fine
+    for nft_metadata in nfts_metadata: 
+        current_file = folder_image + nft_metadata["image"]
+        image_integrity = arc3.file_integrity(current_file)
+        image_mimetype = arc3.file_mimetype(current_file)
+        nft_metadata_string = arc3.create_metadata(
+            name=nft_metadata["name"], 
+            description=nft_metadata["name"], 
+            image= url_prefix_images+ "/" + nft_metadata["image"], 
+            image_integrity=image_integrity,
+            image_mimetype=image_mimetype,
+            properties=nft_metadata["properties"],
+        )
+        with open(folder_json + pathlib.Path(nft_metadata["image"]).stem + '.json', 'w') as json_file:
+            json_file.write(nft_metadata_string)
+
+
+    return ipfs_cid_from_folder(folder_json, upload=True)
+
+def create_acgf_txn_arc_19_arc_3(
+        nfts_metadata:dict,
+        folder_json: str,
+        unitname_prefix: str,
+        sender: str,
+        manager: str,
+        ) -> list:
+    cid_folder_metadata = ipfs_cid_from_folder(folder_json, upload=False)
+    url_prefix_arc19 = arc19.create_url_from_cid(cid_folder_metadata)
+    reserve_address_arc19 = arc19.reserve_address_from_cid(cid_folder_metadata)
+
+    print("Cid_Metadata_Folder: " + cid_folder_metadata)
+    unsigned_txns_arc_19_arc_3 = []
+    idx=1
+    for nft_metadata in nfts_metadata:
+        json_file = pathlib.Path(nft_metadata["image"]).stem + '.json'
+        with open(folder_json + json_file, "r+") as file1:
+            json_metadata = file1.read()
+        unsigned_txns_arc_19_arc_3.append(arc3.create_asset_txn(
+            json_metadata=json_metadata,
+            unit_name=unitname_prefix + str(idx).zfill(4), # zfill to get ALGO0001 ALGO0002 ... ALGO9999
+            asset_name=nft_metadata["name"],
+            url= url_prefix_arc19 + "/" + json_file + '#arc3',
+            sender=sender,
+            sp=sp,
+            manager=manager,
+            reserve=reserve_address_arc19
+        ))
+        idx + 1 
+    return unsigned_txns_arc_19_arc_3
+
+def create_acgf_txn_arc3(
+        nfts_metadata:dict,
+        folder_json: str,
+        unitname_prefix: str,
+        sender: str,
+        manager: str,
+        reserve: str,
+        ) -> list:
+    cid_folder_metadata = ipfs_cid_from_folder(folder_json, upload=False)
+    url_prefix_arc3 = "ipfs://" + cid_folder_metadata
+
+    print("Cid_Metadata_Folder: " + cid_folder_metadata)
+    unsigned_txns_arc_3 = []
+    idx=1
+    for nft_metadata in nfts_metadata:
+        json_file = pathlib.Path(nft_metadata["image"]).stem + '.json'
+        with open(folder_json + json_file, "r+") as file1:
+            json_metadata = file1.read()
+        unsigned_txns_arc_3.append(arc3.create_asset_txn(
+            json_metadata=json_metadata,
+            unit_name=unitname_prefix + str(idx).zfill(4), # zfill to get ALGO0001 ALGO0002 ... ALGO9999
+            asset_name=nft_metadata["name"],
+            url= url_prefix_arc3 + "/" + json_file + '#arc3',
+            sender=sender,
+            sp=sp,
+            manager=manager,
+            reserve=reserve
+        ))
+        idx + 1 
+
+    return unsigned_txns_arc_3
+
+
+if __name__ == "__main__":
     accts = sandbox.get_accounts()
     acct_sender = accts.pop()
     print(f"Sender {acct_sender.address}")
 
-    # ---------INPUT---------
+    # ---------INPUT--------- #
     nfts_metadata = [
         {
             "name": "ALGO 1", 
@@ -77,56 +165,9 @@ def demo():
     sender = acct_sender.address
     manager = acct_sender.address
     reserve = acct_sender.address
-    # ---------INPUT---------
+    sp = sandbox.get_algod_client().suggested_params()
 
+    upload_ipfs_arc3(folder_image, nfts_metadata)
+    create_acgf_txn_arc3(nfts_metadata, folder_json,unitname_prefix, sender, manager, reserve)
 
-
-
-    url_prefix_image = ipfs_folder_cid(folder_image, upload=True)
-    print("Cid_Image_Folder: " + url_prefix_image)
-    # Check everything is fine
-    for nft_metadata in nfts_metadata: 
-        current_file = folder_image + nft_metadata["image"]
-        image_integrity = arc3.file_integrity(current_file)
-        image_mimetype = arc3.file_mimetype(current_file)
-        nft_metadata_string = arc3.create_metadata(
-            name=nft_metadata["name"], 
-            description=nft_metadata["name"], 
-            image= "ipfs:/" + url_prefix_image + "/" + nft_metadata["image"], 
-            image_integrity=image_integrity,
-            image_mimetype=image_mimetype,
-            properties=nft_metadata["properties"],
-            # extra_metadata="iHcUslDaL/jEM/oTxqEX++4CS8o3+IZp7/V5Rgchqwc="
-        )
-        with open(folder_json + pathlib.Path(nft_metadata["image"]).stem + '.json', 'w') as json_file:
-            json_file.write(nft_metadata_string)
-            # json.dump(nft_metadata_string, json_file, indent=4)
-    url_prefix_json = ipfs_folder_cid(folder_json, upload=True)
-    print("Cid_Metadata_Folder: " + url_prefix_json)
-    unsigned_txns = []
-    idx=1
-    for nft_metadata in nfts_metadata:
-        json_file = pathlib.Path(nft_metadata["image"]).stem + '.json'
-        f = open(folder_json + json_file)
-        dict_metadata = json.load(f)
-        with open(folder_json + json_file, "r+") as file1:
-        # Reading from a file
-            str_metadata = file1.read()
-        sp = sandbox.get_algod_client().suggested_params()
-        unsigned_txns.append(arc3.create_asset_txn(
-            dict_metadata=dict_metadata,
-            str_metadata=str_metadata,
-            unit_name=unitname_prefix + str(idx).zfill(4), # zfill to get ALGO0001 ALGO0002 ... ALGO9999
-            asset_name=nft_metadata["name"],
-            url="ipfs://" + url_prefix_json + "/" + json_file + '#arc3',
-            sender=sender,
-            sp=sp,
-            manager=manager,
-            reserve=reserve
-        ))
-        idx + 1 
-    print(unsigned_txns)
-
-
-if __name__ == "__main__":
-    demo()
+    create_acgf_txn_arc_19_arc_3(nfts_metadata, folder_json,unitname_prefix, sender, manager)
