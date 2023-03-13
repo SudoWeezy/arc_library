@@ -5,4 +5,3 @@
 `cd arcs`
 
 `python main.py`
-``
