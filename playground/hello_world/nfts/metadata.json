@@ -1,0 +1,38 @@
+[
+    {
+        "name": "ALGO 1", 
+        "description": "Stars", 
+        "image": "ALGO_1.png", 
+        "properties":{
+            "author": "Stephane",
+            "traits": {
+                "position": "center",
+                "colors": 4
+            }
+        }
+    },
+    {
+        "name": "ALGO 2", 
+        "description": "Light", 
+        "image": "ALGO_2.jpg", 
+        "properties":{
+            "author": "Stephane",
+            "traits": {
+                "position": "left",
+                "colors": 3
+            }
+        }
+    },
+    {
+        "name": "ALGO 3", 
+        "description": "Water", 
+        "image": "ALGO_3.jpg", 
+        "properties":{
+            "author": "Stephane",
+            "traits": {
+                "position": "center",
+                "colors": 8
+            }
+        }
+    }
+]

@@ -4,7 +4,8 @@ import mimetypes
 import json
 import base64
 from algosdk import transaction
-import arc16
+from arcs import arc16
+import subprocess
 def file_integrity(filename: str) ->str:
     with open(filename,"rb") as f:
         bytes = f.read() # read entire file as bytes
@@ -208,47 +209,49 @@ def create_asset_txn(
         total=1,
         default_frozen=False,
         lease="",
-        rekey_to=""
+        rekey_to="",
+        metadata_hash=True
         ):
 
     metadata = json.loads(json_metadata)
 
-    
-    if ("extra_metadata" in metadata.keys()):
-        h = hashlib.new("sha512_256")
-        h.update(b"arc0003/amj")
-        h.update(json_metadata.encode("utf-8"))
-        json_metadata_hash = h.digest()
+    if metadata_hash:
+        if ("extra_metadata" in metadata.keys()):
+            h = hashlib.new("sha512_256")
+            h.update(b"arc0003/amj")
+            h.update(json_metadata.encode("utf-8"))
+            json_metadata_hash = h.digest()
 
-        h = hashlib.new("sha512_256")
-        h.update(b"arc0003/am")
-        
-        h.update(json_metadata_hash)
-        h.update(base64.b64decode(metadata["extra_metadata"]))
-        am = h.digest()
+            h = hashlib.new("sha512_256")
+            h.update(b"arc0003/am")
+            
+            h.update(json_metadata_hash)
+            h.update(base64.b64decode(metadata["extra_metadata"]))
+            am = h.digest()
+        else:
+            h = hashlib.new("sha256")
+            h.update(json_metadata.encode("utf-8"))
+            am = h.digest()
     else:
-        h = hashlib.new("sha256")
-        h.update(json_metadata.encode("utf-8"))
-        am = h.digest()
-    
-    assert(url[:4]=="#arc3", '''
-    
-    ''')
-    assert(total%10 == 0, '''
-    Total Number of Units (t) MUST be a power of 10 larger than 1: 10, 100, 1000, ...
-    ''')
+        am = ""
+    assert (url[-5:]=="#arc3"), '''
+        Asset URL SHOULD ends with #arc3
+    '''
 
-    assert(decimals * total == 1, '''
+    assert ((total == 1) | (total%10 == 0)), '''
+    Total Number of Units (t) MUST be a power of 10 larger than 1: 10, 100, 1000, ...
+    '''
+
+    assert (10**decimals * total == 1), '''
     Number of Digits after the Decimal Point (dc) MUST be equal to the logarithm in base 10 of total number of units.
     In other words, the total supply of the ASA is exactly 1.
-    ''')
+    '''
 
 
     transaction_dict = {
         "sender": sender,
         "sp": sp,
         "total": total,
-        "decimals": decimals,
         "default_frozen": default_frozen,
         "manager": manager,
         "reserve": reserve,
@@ -260,7 +263,84 @@ def create_asset_txn(
         "metadata_hash": am,
         "note": note,
         "lease": lease,
+        "strict_empty_address_check": False,
         "rekey_to": rekey_to
     }
-    return(transaction.AssetCreateTxn(**transaction_dict))
+    return(transaction.AssetConfigTxn(**transaction_dict))
 
+def ipfs_cid_from_folder(folder: str, upload = False) -> str:
+    """
+    Compute the (encoded) information byte string corresponding to all the files inside the folder `folder`
+    """
+    # Use Kubo IPFS command line
+    # We don't use --wrap-directory as we are already in a folder
+    if upload:
+        output = subprocess.run(
+            ["ipfs", "add", "--cid-version=1", "--hash=sha2-256", "--recursive", "--quiet", "--ignore=__pycache__", folder],
+            capture_output=True
+        )
+    else:
+        output = subprocess.run(
+            ["ipfs", "add", "--cid-version=1", "--hash=sha2-256", "--recursive", "--only-hash", "--quiet", "--ignore=__pycache__", folder],
+            capture_output=True
+        )
+    # The CID is the last non-empty line
+    text_cid = output.stdout.decode().strip().split("\n")[-1]
+    return text_cid
+
+def upload_ipfs(folder_image: str, folder_json: str, nfts_metadata: dict, upload = False) -> str:
+    cid_folder_images = ipfs_cid_from_folder(folder_image, upload)
+    print("Cid_Image_Folder: " + cid_folder_images)
+
+    url_prefix_images = "ipfs://" + cid_folder_images
+    # Check everything is fine
+    for nft_metadata in nfts_metadata: 
+        current_file = folder_image + nft_metadata["image"]
+        image_integrity = file_integrity(current_file)
+        image_mimetype = file_mimetype(current_file)
+        nft_metadata_string = create_metadata(
+            name=nft_metadata["name"], 
+            description=nft_metadata["name"], 
+            image= url_prefix_images+ "/" + nft_metadata["image"], 
+            image_integrity=image_integrity,
+            image_mimetype=image_mimetype,
+            properties=nft_metadata["properties"],
+        )
+        pathlib.Path(folder_json).mkdir(parents=True, exist_ok=True)
+        with open(folder_json + pathlib.Path(nft_metadata["image"]).stem + '.json', 'w') as json_file:
+            json_file.write(nft_metadata_string)
+
+
+    return ipfs_cid_from_folder(folder_json, upload=True)
+
+def create_acgf_txn(
+        client: any,
+        nfts_metadata: dict,
+        folder_json: str,
+        unitname_prefix: str,
+        sender: str,
+        manager: str,
+        reserve: str,
+        ) -> list:
+    cid_folder_metadata = ipfs_cid_from_folder(folder_json)
+    url_prefix_arc3 = "ipfs://" + cid_folder_metadata
+
+    print("Cid_Metadata_Folder: " + cid_folder_metadata)
+    unsigned_txns_arc_3 = []
+    idx=1
+    for nft_metadata in nfts_metadata:
+        json_file = pathlib.Path(nft_metadata["image"]).stem + '.json'
+        with open(folder_json + json_file, "r+") as file1:
+            json_metadata = file1.read()
+        unsigned_txns_arc_3.append(create_asset_txn(
+            json_metadata=json_metadata,
+            unit_name=unitname_prefix + str(idx).zfill(4), # zfill to get ALGO0001 ALGO0002 ... ALGO9999
+            asset_name=nft_metadata["name"],
+            url= url_prefix_arc3 + "/" + json_file + '#arc3',
+            sender=sender,
+            sp=client.suggested_params(),
+            manager=manager,
+            reserve=reserve
+        ))
+        idx + 1 
+    return unsigned_txns_arc_3
